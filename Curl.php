@@ -39,7 +39,12 @@ class Curl{
     }
 
     public function GET($url = '', $header = ''){
-        
+        $this->setUrl($url);
+        $this->setOpt(CURLOPT_CUSTOMREQUEST, 'GET');
+        if($header != '')
+            $this->setOpt(CURLOPT_HTTPHEADER, $header);
+
+        $this->doRequest();
     }
 
     public function DELETE($url = '', $header = ''){
@@ -72,6 +77,5 @@ class Curl{
     }
 
 }
-
 
 ?>
