@@ -30,7 +30,7 @@ class Integration
 
     private $ticket_type; # тип тикета (operation_sell и т.д.)
 
-    /*
+    /**
     *  name: Construct
     *  do: делают авторизацию на рекассу
     *  @param Integer $id_user - айди пользователя
@@ -42,11 +42,11 @@ class Integration
         $this->AUTH(); # авторизация рекасса
     }
     
-    /*
+    /**
     *  name: Check Shift Open
     *  do: проверка есть ли открытая смена
     *  @var boolean $all_last_shift_id = отправляаем запрос в рекассу для проверки (method: shiftOpenCheck())
-    *  @return String - true (есть): false (нет)
+    *  @return string - true (есть): false (нет)
     */
     public function checkShiftsOpen(){
         $all_last_shift_id = $this->shiftOpenCheck;
@@ -59,11 +59,11 @@ class Integration
 
     }
 
-    /*
+    /**
     *  name: Tickets To SQL
     *  do: собирать все данные и записать в базу (тикеты) -> записывается сумма и дата тикета
     *  @var array $tickets_info = все тикеты из рекассы (method: doShiftTicketListInfo() -> собирает все тикеты, method: clearHasAlreadyTickets() -> удалюят из массива уже записанные в базу тикеты)
-    *  @
+    *  @var String $t
     *  @return String - success or error Insert(SQL)
     */
     public function ticketsToSQL(){
@@ -84,7 +84,7 @@ class Integration
         }
     }
 
-    /*
+    /**
     *  name: Last Shift Tickets To SQL
     *  do: записываем в базу тикетов последней смены
     *  @return String - success or error Insert(SQL)
