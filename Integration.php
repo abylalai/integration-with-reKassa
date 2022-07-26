@@ -62,8 +62,9 @@ class Integration
     /**
     *  name: Tickets To SQL
     *  do: собирать все данные и записать в базу (тикеты) -> записывается сумма и дата тикета
-    *  @var array $tickets_info = все тикеты из рекассы (method: doShiftTicketListInfo() -> собирает все тикеты, method: clearHasAlreadyTickets() -> удалюят из массива уже записанные в базу тикеты)
-    *  @var String $t
+    *  @var Array $tickets_info = все тикеты из рекассы (method: doShiftTicketListInfo() -> собирает все тикеты, method: clearHasAlreadyTickets() -> удалюят из массива уже записанные в базу тикеты)
+    *  @var String $sql = собирает Insert запрос (method: dotemplateTicketToSQL())
+    *  @method lastShiftNumberToSql() = записывает последний номер смены в базу 
     *  @return String - success or error Insert(SQL)
     */
     public function ticketsToSQL(){
@@ -107,7 +108,11 @@ class Integration
         }
 
     }
-    // шаблон записа тикета в базу (SQL template)
+    /**
+    * name: Do Template Ticket To SQL
+    * do: шаблон записа тикета в базу (SQL template)
+    * @return String $sql = INSERT запрос
+    */
     private function doTemplateTicketToSQL($tickets_info){
         $cash_order_last_num = $this->getLastCashOrderNumber() + 1;
         $account_cash_last_num = $this->getLastAccountCashNumber() + 1;
@@ -136,7 +141,11 @@ class Integration
         return $sql;
     }
 
-    # записываем в базу один тикет
+    /**
+    * name: One Ticket To SQL
+    * do: записываем в базу один тикет
+    * @return Array $info = информация о записанном тикете в базу
+    */
     public function oneTicketToSQL(){
         global $mysqli;
 
@@ -163,20 +172,23 @@ class Integration
             return 'error';
         }
     }
-    // сеттер номер тикета
-    public function setNewTicketInfo($ticket_info){
-        $this->new_ticket_info = $ticket_info;
-        return $this;
-    }
-
-    # записываем последний введенный номер смены в базу для каждого пользователя
+    
+    /**
+    * name: Last Shift Number To SQL
+    * do: записываем последний введенный номер смены в базу для каждого пользователя
+    * @return boolean
+    */
     private function lastShiftNumberToSql(){
         global $mysqli;
         $update = $mysqli->query("UPDATE `i_rekassa_info` SET `lastShiftNumber` = " . $this->rekassaLastShift);
         if($update) return true;
     }
-
-    # получаем логин и пароль пользователя на рекассе
+    
+    /**
+    * name: Get User Login
+    * do: получаем логин и пароль пользователя на рекассе
+    * @return Array $login = логин и пароль
+    */
     private function getUserLogin(){
 
         global $mysqli;
@@ -197,8 +209,15 @@ class Integration
 
         return $login;
     }
-
-    # авторизация на рекассе
+    
+    /**
+    * name: AUTH
+    * do: авторизация на рекассе
+    * @if (error)
+    * @return Array $auth = если есть ошибка тогда ошибка 
+    * @else
+    * @return Integer - айди кассы
+    */
     private function AUTH(){
         $login = $this->getUserLogin();
         $auth = $this->API->authREKASSA($login['number'], $login['password']);
@@ -208,12 +227,11 @@ class Integration
             $this->getCashId();
     }
 
-    # получаем список смен
-    public function getCashList(){
-        $cash_list = $this->API->getCashList()['result']['_embedded']['userCashRegisterRoles'];
-    }
-
-    # получаем айди кассы на рекассе
+    /**
+    * name: Get Cash Id
+    * do: получаем айди кассы на рекассе
+    * @return Integer $this->cash_id = номер кассы
+    */
     public function getCashId(){
         $cash_list = $this->API->getCashList()['result']['_embedded']['userCashRegisterRoles'];
 
@@ -224,8 +242,12 @@ class Integration
         $this->shiftOpenCheck = $cash_list[0]['cashRegister']['shiftOpen'];
         return $this->cash_id;
     }
-
-    # обрабатываем список смен с рекассы
+    
+    /**
+    * name: Do Shift List Info
+    * do: обрабатываем список смен с рекассы
+    * @return Array @info = информация о сменах
+    */
     public function doShiftListInfo(){
 
         $shift_list = $this->getShift();
@@ -247,8 +269,12 @@ class Integration
         
         return $info;
     }
-
-    # получаем список смен с рекассы 
+    
+    /**
+    * name: Get Shift
+    * do: получаем список смен с рекассы 
+    * @return Array $shift_list = информация о сменах
+    */
     public function getShift(){
 
         if($this->getRekassaLastShift() == $this->user_last_shift) return false;
@@ -264,8 +290,13 @@ class Integration
 
         return $shift_list;
     }
-
-    # получаем последний айди смены или указываем
+    
+    /**
+    * name: Get reKassa Last Shift 
+    * do: получаем последний айди смены или указываем
+    * @param String $get = если id тогда только номер смены
+    * @return Array $response
+    */
     public function getRekassaLastShift($get = 'id'){
         $s = $this->API->getShiftList($this->cash_id, 0, 1)['result']['_embedded']['shifts'][0];
         if($get == 'id'){
@@ -278,7 +309,12 @@ class Integration
         return $response;
     }
     
-    # Обрабатываем список тикетов с рекассы
+    /**
+    * name: Do Shift Ticket List Info
+    * do: Обрабатываем список тикетов с рекассы
+    * @param String $shifts_info = если default тогда автоматический берем тикеты
+    * @return Array info = информация о тикетах
+    */
     public function doShiftTicketListInfo($shifts_info = 'default'){
         if($shifts_info == 'default') $shifts_info = $this->doShiftListInfo();
 
@@ -308,8 +344,12 @@ class Integration
         
         return $info;
     }   
-
-    # получаем список тикетов с рекассы 
+    
+    /**
+    * name: Get Shift Ticket
+    * do: получаем список тикетов с рекассы 
+    * @return Array $tickets = информация о тикетах
+    */
     public function getShiftTicket($shift_info){
         if($shift_info['shiftTicketCount'] > $this->ticket_size && $this->auto_ticket_to_next_page == true){
             $tickets = array();
@@ -323,8 +363,11 @@ class Integration
         return $tickets;
     }
 
-    # получать один тикет
-
+    /**
+    * name: Clear Has Already Tickets
+    * do: получать один тикет
+    * @return Array $info = возращает информацию о тикете
+    */
     public function getOneTicket(){
         $ticket = $this->API->getTicket($this->cash_id, $this->ticket_id)['result'];
         
@@ -346,15 +389,23 @@ class Integration
         return $info;
     }
     
-    # закрываем смену 
-
+    /**
+    * name: Close Shift
+    * do: закрываем смену
+    * @return String $close_shift = информация закрылся ли смена или ошибка
+    */
     public function closeShift(){
         $close_shift = $this->API->closeShift($this->cash_id, $this->shift_id, $this->user_pin);
         
         return $close_shift;
     }
-
-    # удаляем уже записанные тикеты в нашу базу (с массива)
+    
+    /**
+    * name: Clear Has Already Tickets
+    * do: удаляем уже записанные тикеты в нашу базу (с массива)
+    * @param Array $tickets_info = массив тикетов
+    * @return Array $info = возращает уникальные тикеты
+    */
     private function clearHasAlreadyTickets($tickets_info){
         global $mysqli;
         
@@ -391,8 +442,12 @@ class Integration
 
         return $info;
     }
-
-    # удаляем неуникальные айдишники
+    
+    /**
+    * name: Clear Not Unique
+    * do: удаляем неуникальные айдишники (пример: 1,1,1,1,2,3 -> оставляет: 1,2,3)
+    * @return String
+    */
     private function clearNotUnique($str, $seperator = ','){
         $exp = explode($seperator, $str);
         $exp = array_unique($exp);
@@ -400,8 +455,11 @@ class Integration
         return $response;
     }
 
-    # получаем последний номер расходника в этом году с нашей базы
-
+    /**
+    * name: Get Last Account Cash Number
+    * do: получаем последний номер расходника в этом году с нашей базы
+    * @return Integer $doc_num - последний номер расходника
+    */
     private function getLastAccountCashNumber(){
         global $mysqli;
 
@@ -422,8 +480,11 @@ class Integration
         
         return $doc_num;
     }
-
-    # получаем последний номер приходника в этом году с нашей базы
+    /**
+    * name: Get Last Cash Order Number
+    * do: получаем последний номер приходника в этом году с нашей базы
+    * @return Integer $doc_num - последний номер приходника
+    */
     private function getLastCashOrderNumber(){
         global $mysqli;
         
@@ -445,8 +506,12 @@ class Integration
 
         return $doc_num;
     }
-
-    # перевод ошибок с рекассы
+    /**
+    * name: Errors To Ru
+    * do: перевод ошибок с рекассы
+    * @param String $error
+    * @return String $error
+    */
     public function errorsToRu($error){
         $errors = [
             'ACCESS_DENIED' => 'Неверный логин или пароль',
@@ -469,7 +534,12 @@ class Integration
         return $errors[$error];
     }
 
-    # создать тикет
+    /**
+    * name: Create Ticket
+    * do: создают новый тикет
+    * @param Integer ticketSum (записываем через setter method: setTicketSum($sum))
+    * @return Array $info
+    */
     public function createTicket(){
         if($this->ticketSum == 0){
             return 'Введите сумму';
@@ -519,6 +589,11 @@ class Integration
     # setter pin code
     public function setUserPin($user_pin){
         $this->user_pin = $user_pin;
+        return $this;
+    }
+    # сеттер номер тикета
+    public function setNewTicketInfo($ticket_info){
+        $this->new_ticket_info = $ticket_info;
         return $this;
     }
     # setter shift id
