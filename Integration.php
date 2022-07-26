@@ -30,14 +30,24 @@ class Integration
 
     private $ticket_type; # тип тикета (operation_sell и т.д.)
 
+    /*
+    *  name: Construct
+    *  do: делают авторизацию на рекассу
+    *  @param Integer $id_user - айди пользователя
+    */
     function __construct($id_user)
     {   
         $this->id_user = $id_user;
         $this->API = new RekassaAPI;
         $this->AUTH(); # авторизация рекасса
     }
-
-    # check есть ли открытая смена
+    
+    /*
+    *  name: Check Shift Open
+    *  do: проверка есть ли открытая смена
+    *  @var boolean $all_last_shift_id = отправляаем запрос в рекассу для проверки (method: shiftOpenCheck())
+    *  @return String - true (есть): false (нет)
+    */
     public function checkShiftsOpen(){
         $all_last_shift_id = $this->shiftOpenCheck;
 
@@ -49,7 +59,13 @@ class Integration
 
     }
 
-    # собирать все данные и записать в базу (тикеты) -> записывается сумма и дата тикета
+    /*
+    *  name: Tickets To SQL
+    *  do: собирать все данные и записать в базу (тикеты) -> записывается сумма и дата тикета
+    *  @var array $tickets_info = все тикеты из рекассы (method: doShiftTicketListInfo() -> собирает все тикеты, method: clearHasAlreadyTickets() -> удалюят из массива уже записанные в базу тикеты)
+    *  @
+    *  @return String - success or error Insert(SQL)
+    */
     public function ticketsToSQL(){
         global $mysqli;
 
@@ -68,7 +84,12 @@ class Integration
         }
     }
 
-    public function lastShiftTicketsToSQL(){ // записываем в базу тикетов последней смены
+    /*
+    *  name: Last Shift Tickets To SQL
+    *  do: записываем в базу тикетов последней смены
+    *  @return String - success or error Insert(SQL)
+    */
+    public function lastShiftTicketsToSQL(){ 
         global $mysqli;
 
         $shift_info = $this->getRekassaLastShift('all');
