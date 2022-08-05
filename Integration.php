@@ -30,6 +30,8 @@ class Integration
 
     private $ticket_type; # тип тикета (operation_sell и т.д.)
 
+    public $getLastShift = 0; # последний смена вводит
+    
     /**
     *  name: Construct
     *  do: делают авторизацию на рекассу
@@ -46,7 +48,6 @@ class Integration
     *  name: Check Shift Open
     *  do: проверка есть ли открытая смена
     *  @var boolean $all_last_shift_id = отправляаем запрос в рекассу для проверки (method: shiftOpenCheck())
-    *  @return string - true (есть): false (нет)
     */
     public function checkShiftsOpen(){
         $all_last_shift_id = $this->shiftOpenCheck;
@@ -106,7 +107,6 @@ class Integration
         }else{
             return 'Error INSERT';
         }
-
     }
     /**
     * name: Do Template Ticket To SQL
@@ -124,10 +124,10 @@ class Integration
 
         $sql = 'INSERT INTO `i_rekassa` (`id_user`, `date`, `summa`, `shift_number`, `ticket_id`, `id_client`, `number`, `operation_type`) VALUES ';
         foreach($tickets_info as $ticket_info){
-            if($ticket_info['operation'] == 'OPERATION_SELL' || $ticket_info['operation'] == 'MONEY_PLACEMENT_DEPOSIT'){
+            if($ticket_info['operation'] == 'OPERATION_SELL' || $ticket_info['operation'] == 'MONEY_PLACEMENT_DEPOSIT' || $ticket_info['operation'] == 'OPERATION_BUY_RETURN'){
                 $cash_order_last_num++;
                 $doc_num = $cash_order_last_num;
-            }else if($ticket_info['operation'] == 'OPERATION_SELL_RETURN' || $ticket_info['operation'] == 'MONEY_PLACEMENT_WITHDRAWAL'){
+            }else if($ticket_info['operation'] == 'OPERATION_SELL_RETURN' || $ticket_info['operation'] == 'MONEY_PLACEMENT_WITHDRAWAL' || $ticket_info['operation'] == 'OPERATION_BUY'){
                 $account_cash_last_num++;
                 $doc_num = $account_cash_last_num;
             }else{
@@ -151,17 +151,16 @@ class Integration
 
         $ticket_info = $this->new_ticket_info;
 
-        if($ticket_info['operation'] == 'OPERATION_SELL' || $ticket_info['operation'] == 'MONEY_PLACEMENT_DEPOSIT'){
+        if($ticket_info['operation'] == 'OPERATION_SELL' || $ticket_info['operation'] == 'MONEY_PLACEMENT_DEPOSIT' || $ticket_info['operation'] == 'OPERATION_BUY_RETURN'){
             $doc_num = $this->getLastCashOrderNumber() + 1;
-        }else if($ticket_info['operation'] == 'OPERATION_SELL_RETURN' || $ticket_info['operation'] == 'MONEY_PLACEMENT_WITHDRAWAL'){
+        }else if($ticket_info['operation'] == 'OPERATION_SELL_RETURN' || $ticket_info['operation'] == 'MONEY_PLACEMENT_WITHDRAWAL' || $ticket_info['operation'] == 'OPERATION_BUY'){
             $doc_num = $this->getLastAccountCashNumber() + 1;
         }else{
             $doc_num = 1;
         }
 
-        $sql = 'INSERT INTO `i_rekassa` (`id_user`, `date`, `summa`, `shift_number`, `ticket_id`, `id_client`, `number`, `operation_type`) VALUES ('.$this->id_user.', \''.$ticket_info['date'].'\', \''.$ticket_info['sum'].'\', \''.$ticket_info['shiftNumber'].'\', \''.$ticket_info['ticket_id'].'\', 0, '.$doc_num.', \''.$ticket_info['operation'].'\')';
+        $sql = 'INSERT INTO `i_rekassa` (`id_user`, `date`, `summa`, `shift_number`, `ticket_id`, `id_client`, `number`, `operation_type`, `payment_type`, `items_info`) VALUES ('.$this->id_user.', \''.$ticket_info['date'].'\', \''.$ticket_info['sum'].'\', \''.$ticket_info['shiftNumber'].'\', \''.$ticket_info['ticket_id'].'\', 0, '.$doc_num.', \''.$ticket_info['operation'].'\', \''.$ticket_info['payment_type'].'\', \''.$ticket_info['item_info'].'\')';
         
-
         if($mysqli->query($sql)){
             $info['id'] = $mysqli->insert_id;
             $info['date'] = date('d.m.Y', strtotime($ticket_info['date']));
@@ -180,7 +179,7 @@ class Integration
     */
     private function lastShiftNumberToSql(){
         global $mysqli;
-        $update = $mysqli->query("UPDATE `i_rekassa_info` SET `lastShiftNumber` = " . $this->rekassaLastShift);
+        $update = $mysqli->query("UPDATE `i_rekassa_info` SET `lastShiftNumber` = " . $this->rekassaLastShift . " WHERE `id_user` = " . $this->id_user);
         if($update) return true;
     }
     
@@ -251,7 +250,6 @@ class Integration
     public function doShiftListInfo(){
 
         $shift_list = $this->getShift();
-        
         if(!$shift_list) return false;
 
         $info = array();
@@ -259,17 +257,120 @@ class Integration
         $i = 0;
 
         foreach($shift_list as $shift){
-            if($shift['closeTime'] < $this->reg_date) continue;
+            if($shift['closeTime'] < $this->reg_date || $shift['shiftNumber'] <= $this->user_last_shift) continue;
 
             $info[$i]['shiftNumber'] = $shift['shiftNumber'];
             $info[$i]['shiftTicketCount'] = $shift['shiftTicketNumber'];
-            
+            $info[$i]['date'] = $shift['closeTime'];
+           
+            foreach($shift['data']['taxes'] as $taxesOperations){
+                foreach($taxesOperations['operations'] as $taxes){
+                    if($taxes['operation'] == 'OPERATION_SELL')
+                        $info[$i]['taxes'][0]['OPERATION_SELL'] += $taxes['sum']['bills'] . '.' . $taxes['sum']['coins'];
+                    else if($taxes['operation'] == 'OPERATION_SELL_RETURN')
+                        $info[$i]['taxes'][1]['OPERATION_SELL_RETURN'] += $taxes['sum']['bills'] . '.' . $taxes['sum']['coins'];
+                    else if($taxes['operation'] == 'OPERATION_BUY')
+                        $info[$i]['taxes'][2]['OPERATION_BUY'] += $taxes['sum']['bills'] . '.' . $taxes['sum']['coins'];
+                    else if($taxes['operation'] == 'OPERATION_BUY_RETURN')
+                        $info[$i]['taxes'][3]['OPERATION_BUY_RETURN'] += $taxes['sum']['bills'] . '.' . $taxes['sum']['coins'];
+                }
+            }
+
+            foreach($shift['data']['ticketOperations'] as $operations){
+                foreach($operations['payments'] as $payments){
+                    if($operations['operation'] == 'OPERATION_SELL')
+                        $info[$i]['payments'][0]['OPERATION_SELL'][$payments['payment']] += $payments['sum']['bills'] . '.' . $payments['sum']['coins'];
+                    else if($operations['operation'] == 'OPERATION_SELL_RETURN')
+                        $info[$i]['payments'][1]['OPERATION_SELL_RETURN'][$payments['payment']] += $payments['sum']['bills'] . '.' . $payments['sum']['coins'];
+                    else if($operations['operation'] == 'OPERATION_BUY')
+                        $info[$i]['payments'][2]['OPERATION_BUY'][$payments['payment']] += $payments['sum']['bills'] . '.' . $payments['sum']['coins'];
+                    else if($operations['operation'] == 'OPERATION_BUY_RETURN')
+                        $info[$i]['payments'][3]['OPERATION_BUY_RETURN'][$payments['payment']] += $payments['sum']['bills'] . '.' . $payments['sum']['coins'];
+                }
+            }
+
+            foreach($shift['data']['moneyPlacements'] as $moneyPlacements){
+                if($moneyPlacements['operation'] == 'MONEY_PLACEMENT_WITHDRAWAL')
+                    $info[$i]['payments'][4]['MONEY_PLACEMENT_WITHDRAWAL']['PAYMENT_CARD'] += $moneyPlacements['operationsSum']['bills'] . '.' . $payments['operationsSum']['coins'];
+                else if($moneyPlacements['operation'] == 'MONEY_PLACEMENT_DEPOSIT')
+                    $info[$i]['payments'][5]['MONEY_PLACEMENT_DEPOSIT']['PAYMENT_CARD'] += $moneyPlacements['operationsSum']['bills'] . '.' . $payments['operationsSum']['coins'];
+            }
+
             $i++;
         }
         
         return $info;
     }
     
+    /** 
+     * name: Shifts to SQL
+     * do: Записывает смены (сумму и т.д.) в нашу базу
+     * @return String : success or error SQL, и нет уникальных записей если нет новых смен
+     */
+    public function shiftsToSQL(){
+        global $mysqli;
+        $shifts_info = $this->doShiftListInfo();
+        if(!$shifts_info) return 'нет уникальных записей';
+        $shiftsCount = 0;
+        $cash_order_last_num = $this->getLastCashOrderNumber() + 1;
+        $account_cash_last_num = $this->getLastAccountCashNumber() + 1;
+
+        $sql = 'INSERT INTO `i_rekassa` (`id_user`, `date`, `summa`, `shift_number`, `ticket_id`, `id_client`, `number`, `operation_type`, `payment_type`) VALUES ';
+        $sqlValue = '';
+        foreach($shifts_info as $shift_info){
+            $shiftsCount = $shiftsCount + count($shift_info['payments']);
+            foreach($shift_info['payments'] as $payments_type => $payments){
+
+                $operation_name = key($payments);
+                $payments = $payments[key($payments)];
+                
+                $payments[0] = $payments['PAYMENT_CARD'] + $payments['PAYMENT_MOBILE'];
+                $payments[1] = $payments['PAYMENT_CASH'];
+
+                $payment_name[0] = 'PAYMENT_CARD|MOBILE';
+                $payment_name[1] = 'PAYMENT_CASH';
+
+                $paymentsCount = count($payments);
+
+                if($payments['PAYMENT_MOBILE'] > 0) $paymentsCount--;
+
+                for ($i=0; $i < 2; $i++) {
+
+                    if($payments[$i] <= 0) continue;
+
+                    if($operation_name == 'MONEY_PLACEMENT_DEPOSIT' || $operation_name == 'OPERATION_SELL' || $operation_name == 'OPERATION_BUY_RETURN'){
+                        $cash_order_last_num++;
+                        $doc_num = $cash_order_last_num;
+                    }
+                    else if($operation_name == 'MONEY_PLACEMENT_WITHDRAWAL' || $operation_name == 'OPERATION_SELL_RETURN' || $operation_name == 'OPERATION_BUY')
+                    {
+                        $account_cash_last_num++;
+                        $doc_num = $account_cash_last_num;
+                    }
+                    
+                    $our_sum = $mysqli->query("SELECT SUM(summa) as oursum FROM `i_rekassa` WHERE `id_user` = '".$this->id_user."' AND `shift_number` = '".$shift_info['shiftNumber']."' AND `payment_type` = '".$payment_name[$i]."' AND `operation_type` = '".$operation_name."'")->fetch_assoc()['oursum'];
+                    $payments[$i] = $payments[$i] - $our_sum;
+                    if($payments[$i] <= 0) continue;
+                    $sqlValue .= "\n(".$this->id_user.", '".$shift_info['date']."', '".$payments[$i]."', '".$shift_info['shiftNumber']."', 0, 0, '".$doc_num."', '".$operation_name."', '".$payment_name[$i]."'),";
+                }
+            }
+        }
+
+        if($sqlValue != '')
+            $sql .= preg_replace('/\,$/', '', $sqlValue);
+        else 
+            return 'Нет уникальных записей';
+
+        if($mysqli->query($sql)) {
+            $this->lastShiftNumberToSql();
+            return 'success';
+        }else{
+            return 'Error INSERT';
+        }
+    }
+
+
+
     /**
     * name: Get Shift
     * do: получаем список смен с рекассы 
@@ -277,13 +378,17 @@ class Integration
     */
     public function getShift(){
 
-        if($this->getRekassaLastShift() == $this->user_last_shift) return false;
+        if($this->getRekassaLastShift() < $this->user_last_shift) return false;
 
         if($this->shiftCount > $this->shift_size && $this->auto_shift_to_next_page == true){
             $shift_list = array();
             for ($i=0; $i < $this->shiftCount / $this->shift_size; $i++) { 
                 $shift_list = array_merge($shift_list, $this->API->getShiftList($this->cash_id, $this->shift_page + $i, $this->shift_size)['result']['_embedded']['shifts']);
+                if(end($shift_list['closeTime']) < $this->reg_date || end($shift_list['shiftNumber']) <= $this->user_last_shift) break;
             }
+        }else if($this->getLastShift == 1){
+            $this->getLastShift = 0;
+            $shift_list = $this->API->getShiftList($this->cash_id, 0, 1)['result']['_embedded']['shifts'];
         }else{
             $shift_list = $this->API->getShiftList($this->cash_id, $this->shift_page, $this->shift_size)['result']['_embedded']['shifts'];
         }
@@ -458,7 +563,6 @@ class Integration
     /**
     * name: Get Last Account Cash Number
     * do: получаем последний номер расходника в этом году с нашей базы
-    * @return Integer $doc_num - последний номер расходника
     */
     private function getLastAccountCashNumber(){
         global $mysqli;
@@ -468,7 +572,7 @@ class Integration
         $sN = $mysqli->query("
             (SELECT `number` FROM `i_account_cash` WHERE `id_user`='".$this->id_user."' AND (`date` > '".date("Y")."-01-01 00:00:01' AND `date` < '".date("Y")."-12-31 23:59:59')) 
             UNION ALL 
-            (SELECT `number` FROM `i_rekassa` WHERE (`operation_type` = 'OPERATION_SELL_RETURN' OR `operation_type`='MONEY_PLACEMENT_WITHDRAWAL') AND `id_user`='".$this->id_user."' AND (`date` > '".date("Y")."-01-01 00:00:01' AND `date` < '".date("Y")."-12-31 23:59:59')) 
+            (SELECT `number` FROM `i_rekassa` WHERE (`operation_type` = 'OPERATION_SELL_RETURN' OR `operation_type`='MONEY_PLACEMENT_WITHDRAWAL' OR `operation_type` = 'OPERATION_BUY') AND `id_user`='".$this->id_user."' AND (`date` > '".date("Y")."-01-01 00:00:01' AND `date` < '".date("Y")."-12-31 23:59:59')) 
             ORDER BY `number` DESC LIMIT 1
         ");
 
@@ -483,7 +587,6 @@ class Integration
     /**
     * name: Get Last Cash Order Number
     * do: получаем последний номер приходника в этом году с нашей базы
-    * @return Integer $doc_num - последний номер приходника
     */
     private function getLastCashOrderNumber(){
         global $mysqli;
@@ -493,7 +596,7 @@ class Integration
         $sN=$mysqli->query("
             (SELECT `number` FROM `i_cash_order` WHERE `id_user`='".$this->id_user."' AND (`date` > '".date("Y")."-01-01 00:00:01' AND `date` < '".date("Y")."-12-31 23:59:59')) 
             UNION ALL 
-            (SELECT `number` FROM `i_rekassa` WHERE (`operation_type` = 'OPERATION_SELL' OR `operation_type`='MONEY_PLACEMENT_DEPOSIT') AND `id_user`='".$this->id_user."' AND (`date` > '".date("Y")."-01-01 00:00:01' AND `date` < '".date("Y")."-12-31 23:59:59')) 
+            (SELECT `number` FROM `i_rekassa` WHERE (`operation_type` = 'OPERATION_SELL' OR `operation_type`='MONEY_PLACEMENT_DEPOSIT' OR `operation_type` = 'OPERATION_BUY_RETURN') AND `id_user`='".$this->id_user."' AND (`date` > '".date("Y")."-01-01 00:00:01' AND `date` < '".date("Y")."-12-31 23:59:59')) 
             ORDER BY `number` DESC LIMIT 1
         ");
         
@@ -537,14 +640,13 @@ class Integration
     /**
     * name: Create Ticket
     * do: создают новый тикет
-    * @param Integer ticketSum (записываем через setter method: setTicketSum($sum))
-    * @return Array $info
     */
-    public function createTicket(){
+    public function createTicket($ticket_dop_info){
+        $info = array();
         if($this->ticketSum == 0){
             return 'Введите сумму';
         }else{
-            $create = $this->API->createNewTicket($this->cash_id, $this->ticketSum, $this->ticket_type)['result'];
+            $create = $this->API->createNewTicket($this->cash_id, $this->ticketSum, $this->ticket_type, $ticket_dop_info)['result'];
 
             if(isset($create['message'])){
                 return $create;
@@ -558,6 +660,35 @@ class Integration
             $info['date'] = $create['messageTime'];
             $info['sum'] = $bills . '.' .  (strlen($coins) == 1 ? '0' : '') . $coins;
             $info['operation'] = $create['data']['ticket']['operation'];
+            $info['payment_type'] = ($ticket_dop_info['payment_type'] == 'PAYMENT_MOBILE' || $ticket_dop_info['payment_type'] == 'PAYMENT_CARD' ? 'PAYMENT_CARD|MOBILE' : $ticket_dop_info['payment_type']);
+
+            $info['item_info'] = json_encode($ticket_dop_info);
+
+            $this->ticketSum = 0;
+        }
+
+        return $info;
+    }
+
+    public function createDeposit(){
+        $info = array();
+        if($this->ticketSum == 0){
+            return 'Введите сумму';
+        }else{
+            $create = $this->API->createNewDeposit($this->cash_id, $this->ticketSum, $this->ticket_type)['result'];
+
+            if(isset($create['message'])){
+                return $create;
+            }
+
+            $bills = $create['data']['moneyPlacement']['sum']['bills'];
+            $coins = $create['data']['moneyPlacement']['sum']['coins'];
+
+            $info['ticket_id'] = $create['id'];
+            $info['shiftNumber'] = $create['shiftNumber'];
+            $info['date'] = $create['messageTime'];
+            $info['sum'] = $bills . '.' .  (strlen($coins) == 1 ? '0' : '') . $coins;
+            $info['operation'] = $create['data']['moneyPlacement']['operation'];
 
             $this->ticketSum = 0;
         }
@@ -636,6 +767,11 @@ class Integration
     # setter type ticket
     public function setTicketType($type){
         $this->ticket_type = $type;
+        return $this;
+    }
+    #
+    public function setGetLastShift($type){
+        $this->getLastShift = $type;
         return $this;
     }
 }
