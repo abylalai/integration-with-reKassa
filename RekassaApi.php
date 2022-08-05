@@ -5,6 +5,12 @@ class RekassaAPI
 	public $url_server = 'https://api-test.rekassa.kz';
 	public $api_key = 'df2a0940-d5d4-11ec-9d64-0242ac120002';
 	
+	private function doXRequestId(){
+		global $api;
+		$permitted_chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+		return $api->Users->user_id . '-' . substr(str_shuffle($permitted_chars), 0, 9) . '-' . date('mdy-His') . '-' . substr(str_shuffle($permitted_chars), 0, 9);
+	}
+
 	// Аутентификация, получение токена ==========================
 	public function authREKASSA($number, $password)
 	{	
@@ -327,7 +333,7 @@ class RekassaAPI
 	
 	// New Ticket
 
-	public function createNewTicket($id_cash, $summa = 0, $ticket_type){
+	public function createNewTicket($id_cash, $summa = 0, $ticket_type, $ticket_dop_info){
 		$info = array();
 		$url = $this->url_server."/api/crs/".$id_cash."/tickets";
 
@@ -341,6 +347,8 @@ class RekassaAPI
 
 		$request_info['ticket_type'] = $ticket_type;
 
+		$request_info['items'] = $ticket_dop_info['items'];
+		$request_info['payment_type'] = $ticket_dop_info['payment_type'];
 		$request = $this->doTempCreateNewTicket($request_info);
 
 		$curl = curl_init($url);
@@ -350,7 +358,8 @@ class RekassaAPI
             CURLOPT_HTTPHEADER => [
 				"Accept: application/json",
                 'Content-Type: application/json',
-				"Authorization: Bearer ".$this->access_token_rekassa
+				"Authorization: Bearer ".$this->access_token_rekassa,
+				'X-Request-ID: ' . $this->doXRequestId()
             ],
             CURLOPT_POSTFIELDS => json_encode($request),
         ]);
@@ -375,11 +384,78 @@ class RekassaAPI
 		$info["url"] = $url;		
 		
 		curl_close($curl);	
-		
 		return $info;		
 	}
-
 	
+	public function createNewDeposit($id_cash, $summa = 0, $ticket_type){
+		$info = array();
+		$url = $this->url_server."/api/crs/".$id_cash."/cash";
+
+		$full_sum = explode('.', $summa);
+		$request_info['bills'] = $full_sum[0];
+		if(!empty($full_sum[1])){
+			$request_info['coins'] = $full_sum[1];
+		}else{
+			$request_info['coins'] = 0;
+		}
+
+		$request_info['ticket_type'] = $ticket_type;
+
+
+		$curl = curl_init($url);
+		curl_setopt_array($curl, [
+            CURLOPT_POST => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+				"Accept: application/json",
+                'Content-Type: application/json',
+				"Authorization: Bearer ".$this->access_token_rekassa,
+				'X-Request-ID: ' . $this->doXRequestId()
+            ],
+            CURLOPT_POSTFIELDS => json_encode([
+				"datetime" => 
+				[
+					"date" => [
+						"year" => "".date('Y')."", 
+						"month" => "".date('n')."", 
+						"day" => "".date('j')."" 
+					], 
+					"time" => [
+						"hour" => "".date('G')."", 
+						"minute" => "".date('i')."", 
+						"second" => "".date('s').""
+					] 
+				], 
+				"operation" => $ticket_type,
+				"sum" => [
+					'bills' => $request_info["bills"],
+					'coins' => $request_info["coins"]
+				]
+			]),
+        ]);
+
+        $response = curl_exec($curl);
+		$http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+		if ($http_code == 200)
+		{
+			$result = json_decode($response, true);	
+		}
+		else if ($http_code == 401)
+			$info["error"] = 'Не прошел авторизацию';		
+		else
+		{
+			$result = json_decode($response, true);	
+			$info["error"] = 'Ошибка - '.$http_code;
+		}		
+		
+		$info["http_code"] = $http_code;
+		$info["curl_error"] = curl_error($curl);
+		$info["result"] = $result;
+		$info["url"] = $url;		
+		
+		curl_close($curl);	
+		return $info;		
+	}
 
 	private function doTempCreateNewTicket($request_info){
 		$info = $request_info;
@@ -402,52 +478,27 @@ class RekassaAPI
 			[
 				"type" => "DOMAIN_SERVICES" 
 			], 
-			"items" => 
-			[
-				[
-					"type" => "ITEM_TYPE_COMMODITY", 
-					"commodity" => 
-					[
-						"name" => "Позиция", 
-						"sectionCode" => "1", 
-						"quantity" => 1, 
-						"price" => [
-							"bills" => $info['bills'], 
-							"coins" => $info['coins']
-						], 
-						"sum" => [
-							"bills" => $info['bills'], 
-							"coins" => $info['coins']
-						], 
-						"auxiliary" => [
-							[
-								"key" => "UNIT_TYPE", 
-								"value" => "PIECE" 
-							] 
-						] 
-					] 
-				] 
-			], 
+			"items" => $info['items'], 
 			"payments" => 
 			[
 				[
-					"type" => "PAYMENT_CASH", 
+					"type" => $info['payment_type'], 
 					"sum" => [
 						"bills" => $info['bills'], 
 						"coins" => $info['coins']
 					] 
 				] 
-			], 
+			],
 			"amounts" => [
 				"total" => 
 				[
 					"bills" => $info['bills'], 
-						"coins" => $info['coins']
-				], 
+					"coins" => $info['coins']
+				],
 				"taken" => 
 				[
-					"bills" => $info['bills'], 
-					"coins" => $info['coins']
+					"bills" => ($info['payment_type'] == 'PAYMENT_CASH' && ($info['ticket_type'] == 'OPERATION_SELL' || $info['ticket_type'] == 'OPERATION_BUY_RETURN') ? $info['bills']: '0'), 
+					"coins" => ($info['payment_type'] == 'PAYMENT_CASH' && ($info['ticket_type'] == 'OPERATION_SELL' || $info['ticket_type'] == 'OPERATION_BUY_RETURN') ? $info['coins'] : '0')
 				], 
 				"change" => 
 				[
