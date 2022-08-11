@@ -1,9 +1,8 @@
 <?
 date_default_timezone_set('Asia/Almaty');
 
-include_once($_SERVER["DOCUMENT_ROOT"].'/rekassa/abylai/RekassaAPI.php'); # апи реккассы
+include_once($_SERVER["DOCUMENT_ROOT"].'/rekassa/abylai/RekassaApi.php'); # апи реккассы
 include_once($_SERVER["DOCUMENT_ROOT"].'/rekassa/abylai/Integration.php'); # интеграция рекассы с нашем сайтом
-
 class REKASSA
 {
 	public $Integration;
@@ -18,7 +17,7 @@ class REKASSA
 		$API = new RekassaAPI();
 		$res = $API->authREKASSA($login, $password);
 		if(isset($res['error']) && $res['access_token'] == ''){
-			$res['error'] = ($res['error'] == 'No access' ? 'Неправильный пароль или логин' : '');
+			$res['error'] = ($res['error'] == 'No access' || $res['error'] == 'Not Found' ? 'Неправильный пароль или логин' : '');
 			return $res['error'];
 		}else{
 			return 'success';
@@ -35,7 +34,7 @@ class REKASSA
 		}else{
 
 			if($mysqli->query("INSERT INTO `i_rekassa_info`(`id_user`,`number`, `password`, `lastShiftNumber`, `pin_code`) VALUES(".$api->Users->user_id.", '".$login."', '".$password."', '0', '0000')")){
-				echo 'касса успешно добавлена';
+				echo 'Касса успешно подключен';
 			}else{
 				echo 'Ошибка на стороне сервера';
 			}
@@ -50,5 +49,9 @@ class REKASSA
 	}
 
 }
+
+
+
+
 
 ?>
