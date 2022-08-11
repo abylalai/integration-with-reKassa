@@ -2,8 +2,11 @@
 class RekassaAPI
 {
 	public $access_token_rekassa;	
-	public $url_server = 'https://api-test.rekassa.kz';
-	public $api_key = 'df2a0940-d5d4-11ec-9d64-0242ac120002';
+	// public $url_server = 'https://api-test.rekassa.kz';
+	// public $api_key = 'df2a0940-d5d4-11ec-9d64-0242ac120002';
+	
+	public $url_server = 'https://app.rekassa.kz/partner';
+	public $api_key = '17d81dcc-cea8-4e55-b4eb-f9d13e4468fc';
 	
 	private function doXRequestId(){
 		global $api;
@@ -340,7 +343,16 @@ class RekassaAPI
 		$full_sum = explode('.', $summa);
 		$request_info['bills'] = $full_sum[0];
 		if(!empty($full_sum[1])){
-			$request_info['coins'] = $full_sum[1];
+			
+			$full_sum[1] = substr($full_sum[1], 0,2);
+
+			if(strlen($full_sum[1]) == 1) 
+				$full_sum[1] = $full_sum[1] . '0';
+
+			if(substr($full_sum[1],0,1) == '0')
+				$full_sum[1] = substr($full_sum[1], 1,2);
+
+			$request_info['coins'] = substr($full_sum[1], 0, 2);
 		}else{
 			$request_info['coins'] = 0;
 		}
@@ -371,11 +383,21 @@ class RekassaAPI
 			$result = json_decode($response, true);	
 		}
 		else if ($http_code == 401)
-			$info["error"] = 'Не прошел авторизацию';		
+			// $info["error"] = 'Не прошел авторизацию';
+			$result = [
+				'message' => 'ERROR_500',
+				'code' => 'ERROR_' . $http_code
+			];		
 		else
 		{
 			$result = json_decode($response, true);	
 			$info["error"] = 'Ошибка - '.$http_code;
+			if($http_code == 500){
+				$result = [
+					'message' => 'ERROR_500',
+					'code' => 'ERROR_500'
+				];
+			}
 		}		
 		
 		$info["http_code"] = $http_code;
@@ -394,13 +416,21 @@ class RekassaAPI
 		$full_sum = explode('.', $summa);
 		$request_info['bills'] = $full_sum[0];
 		if(!empty($full_sum[1])){
-			$request_info['coins'] = $full_sum[1];
+			
+			$full_sum[1] = substr($full_sum[1], 0,2);
+
+			if(strlen($full_sum[1]) == 1) 
+				$full_sum[1] = $full_sum[1] . '0';
+
+			if(substr($full_sum[1],0,1) == '0')
+				$full_sum[1] = substr($full_sum[1], 1,2);
+
+			$request_info['coins'] = substr($full_sum[1], 0, 2);
 		}else{
 			$request_info['coins'] = 0;
 		}
 
 		$request_info['ticket_type'] = $ticket_type;
-
 
 		$curl = curl_init($url);
 		curl_setopt_array($curl, [
@@ -441,11 +471,21 @@ class RekassaAPI
 			$result = json_decode($response, true);	
 		}
 		else if ($http_code == 401)
-			$info["error"] = 'Не прошел авторизацию';		
+			// $info["error"] = 'Не прошел авторизацию';	
+			$result = [
+				'message' => 'ERROR_500',
+				'code' => 'ERROR_500'
+			];
 		else
 		{
 			$result = json_decode($response, true);	
 			$info["error"] = 'Ошибка - '.$http_code;
+			if($http_code == 500){
+				$result = [
+					'message' => 'ERROR_500',
+					'code' => 'ERROR_500'
+				];
+			}
 		}		
 		
 		$info["http_code"] = $http_code;
@@ -582,11 +622,21 @@ class RekassaAPI
 			$result = json_decode($response, true);						
 		}
 		else if ($http_code == 401)
-			$info["error"] = 'Не прошел авторизацию';		
+			// $info["error"] = 'Не прошел авторизацию';		
+			$result = [
+				'message' => 'ERROR_500',
+				'code' => 'ERROR_500'
+			];
 		else
 		{
 			$result = json_decode($response, true);	
 			$info["error"] = 'Ошибка - '.$http_code;
+			if($http_code == 500){
+				$result = [
+					'message' => 'ERROR_500',
+					'code' => 'ERROR_500'
+				];
+			}
 		}		
 		
 		$info["http_code"] = $http_code;
