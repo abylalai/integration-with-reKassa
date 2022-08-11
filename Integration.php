@@ -1,5 +1,5 @@
 <?
-// 25.07.2022 => 38 functions
+// 10.08.2022 => 38 functions
 class Integration
 {
     private $API; # api рекассы
@@ -22,7 +22,8 @@ class Integration
     
     public $new_ticket_info = array(); # массив тикетов
 
-    public $pin_code; # пин код (исп. при закрывание смены)
+    public $user_pin; # пин код (исп. при закрывание смены) 
+    private $last_user_pin; # пин код (исп. при закрывание смены)
 
     public $ticketSum = 0; # сумма тикета (500 тг и тд (без тг))
     
@@ -59,6 +60,134 @@ class Integration
         }
 
     }
+
+    /**
+     * 
+     */
+
+    public function getCashSingle()
+    {
+        return $this->API->getCashSingle(639385);
+    }
+
+     /**
+      * 
+
+      */
+
+    public function doCheckPhoto(){
+        $cashInfo = $this->getCashSingle()['result'];
+        $this->setTicketId(76735118);
+        $ticketInfo = $this->API->getTicket($this->cash_id, $this->ticket_id)['result'];
+        $check = '
+        <table class="table table-striped table-bordered">
+            <tr>
+                <td></td>
+                <td colspan="2">'.$cashInfo['data']['service']['regInfo']['org']['title'].'</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>
+                <td colspan="2">БИН (ИИН): '.$cashInfo['data']['service']['regInfo']['org']['inn'].'</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td colspan="2">'.$cashInfo['data']['service']['regInfo']['org']['address'].'</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td colspan="2">ФИСКАЛЬНЫЙ ЧЕК</td>
+                <td></td>
+            </tr>
+            '.($ticketInfo['offlineTicketNumber'] != '' ? '
+            <tr>
+                <td>АВТОНОМНЫЙ</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            ' : '').'
+            <tr>
+                <td>Продажа:</td>
+                <td>№'.$ticketInfo['shiftDocumentNumber'].'</td>
+                <td>Смена:</td>
+                <td style="text-align: right">'.$ticketInfo['shiftNumber'].'</td>
+            </tr>
+            <tr>
+                <td>Дата:</td>
+                <td style="text-align: right">10-08-2022</td>
+                <td>Время:</td>
+                <td>13:42:19</td>
+            </tr>
+            <tr>
+                <td>ФП:</td>
+                <td style="text-align: right">1145203939</td>
+                <td>Кассир:</td>
+                <td style="text-align: right">306102</td>
+            </tr>
+            <tr>
+                <td>РНМ:</td>
+                <td style="text-align: right">010102008801</td>
+                <td>ЗНМ:</td>
+                <td>SGGXHB98-EX1</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td colspan="2">ДУБЛИКАТ</td><td></td>
+            </tr>
+            <tr>
+                <td>1. Позиция</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+                <tr>
+                <td>1.0 шт. × 10.00 ₸</td>
+                <td></td>
+                <td></td>
+                <td>10.00 ₸</td>
+            </tr>
+                <tr>
+                <td>Стоимость</td>
+                <td></td>
+                <td></td>
+                <td>10.00 ₸</td>
+            </tr>
+                <tr>
+                <td>ИТОГО</td>
+                <td></td>
+                <td></td>
+                <td>10.00 ₸</td>
+            </tr>
+                <tr>
+                <td>Наличные</td>
+                <td></td>
+                <td></td>
+                <td>10.00 ₸</td>
+            </tr>
+                <tr>
+                <td colspan="3">ОФД АО «Транстелеком»</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td colspan="3">Для проверки чека отсканируйте QR-</td>
+                <td></td>
+            </tr>
+                <tr>
+                <td></td>
+                <td colspan="2">код (https://ofd1.kz)</td>
+                <td></td>
+            </tr>
+                <tr>
+                <td colspan="4">reKassa.kz - Бесплатный онлайн кассовый аппарат</td>
+            </tr>
+            </table>
+        ';
+
+        return $check;
+     }
 
     /**
     *  name: Tickets To SQL
@@ -205,6 +334,7 @@ class Integration
         $this->reg_date = $r['create_date'];
         $this->user_last_shift = $r['lastShiftNumber'];
         $this->user_pin = $r['pin_code'];
+        $this->last_user_pin = $r['pin_code'];
 
         return $login;
     }
@@ -631,10 +761,12 @@ class Integration
             'CANT_CANCEL_TICKET' => 'ТК ОФД не поддерживает данную операцию',
             'CASH_REGISTER_SHOULD_HAVE_SHIFT_OPEN' => 'В кассовом аппарате должна быть открыта смена',
             'WRONG_PASSWORD' => 'Неправильный пин или пароль',
+            'ERROR_500' => 'Error 500 / возможно вы изменили пароль для интеграции'
         ];
         $errors['CASH_REGISTER_OFFLINE_PERIOD_EXPIRED'] = 'Требуется закрыть смену';
         $errors['CASH_REGISTER_SHIFT_PERIOD_EXPIRED'] = 'Требуется закрыть смену';
-        return $errors[$error];
+        if(array_key_exists($error, $errors)) return $errors[$error];
+        else return $error;
     }
 
     /**
@@ -696,12 +828,21 @@ class Integration
         return $info;
     }
 
+    # change pin code rekassa
+    public function changePinCode($pin){
+        global $mysqli;
+        if($this->last_user_pin != $pin)
+            $mysqli->query("UPDATE `i_rekassa_info` SET `pin_code` = '" . $pin . "'");
+    }
+
     # DEBUG LOG
     public function debug($s){
         echo '<pre>';
         print_r($s);
         echo '<pre>';
     }
+
+    
 
     # СЕТТЕРЫ
 
